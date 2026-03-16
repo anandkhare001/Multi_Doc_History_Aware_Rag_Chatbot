@@ -1,5 +1,5 @@
 import streamlit as st
-from api_utils.api_utils import upload_document, list_documents, delete_document
+from api_utils import upload_document, list_documents, delete_document
 
 
 def display_sidebar():
@@ -27,11 +27,11 @@ def display_sidebar():
         for doc in st.session_state.documents:
             st.sidebar.text(f"{doc['filename']} (ID: {doc['id']})")
 
-        selected_file_id = st.sidebar.selectbox("Select a document to delete",
-                                            options=[doc['id'] for doc in st.session_state.documents])
+        selected_file_name = st.sidebar.selectbox("Select a document to delete",
+                                            options=[doc['filename'] for doc in st.session_state.documents])
 
         if st.sidebar.button("Delete Selected Document"):
-            delete_response = delete_document(selected_file_id)
+            delete_response = delete_document(selected_file_name)
             if delete_response:
                 st.sidebar.success(f"Document deleted successfully.")
                 st.session_state.documents = list_documents()

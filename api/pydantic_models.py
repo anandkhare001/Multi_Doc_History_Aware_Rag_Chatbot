@@ -30,4 +30,4 @@ class DocumentInfo(BaseModel):
 
 
 class DeleteFileRequest(BaseModel):
-    file_id: int
+    file_name: str

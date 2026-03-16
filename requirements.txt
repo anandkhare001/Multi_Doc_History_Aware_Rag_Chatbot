@@ -9,6 +9,9 @@ langchain-groq==0.3.6
 langchain-google-genai==2.1.8
 langchain-openai==0.2.10
 
+langchain-pinecone==0.2.12
+pinecone==6.0.1
+
 langchain_chroma 
 sentence_transformers 
 
@@ -28,3 +31,4 @@ pandas
 pypdf
 
 streamlit
+pinecone

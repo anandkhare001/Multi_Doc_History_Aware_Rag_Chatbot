@@ -1,8 +1,9 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException
-from model_utils.pydantic_models import QueryInput, QueryResponse, DocumentInfo, DeleteFileRequest
-from model_utils.langchain_utils import get_rag_chain
-from db_utils.db_utils import insert_application_logs, get_chat_history, get_all_documents, insert_document_record, delete_document_record
-from db_utils.chroma_utils import index_document_to_chroma, delete_docs_from_chroma
+from pydantic_models import QueryInput, QueryResponse, DocumentInfo, DeleteFileRequest
+from langchain_utils import get_rag_chain
+from db_utils import insert_application_logs, get_chat_history, get_all_documents, insert_document_record, delete_document_record, get_document_details
+# from chroma_utils import index_document_to_chroma, delete_docs_from_chroma
+from pinecone_utils import *
 import os
 import uuid
 import logging
@@ -58,7 +59,9 @@ def upload_and_index_document(file: UploadFile = File(...)):
             shutil.copyfileobj(file.file, buffer)
 
         file_id = insert_document_record(file.filename)
-        success = index_document_to_chroma(temp_file_path, file_id)
+        documents = load_documents(temp_file_path) 
+        documents_splits = split_documents(documents)
+        success = index_documents_to_pinecone("multi-doc-rag", documents_splits, file.filename)
 
         if success:
             return {"message": f"File {file.filename} has been successfully uploaded and indexed.", "file_id": file_id}
@@ -79,23 +82,20 @@ def list_documents():
 # Delete Document Endpoint:
 @app.post("/delete-doc")
 def delete_document(request: DeleteFileRequest):
-    chroma_delete_success = delete_docs_from_chroma(request.file_id)
+    #file_list = get_document_details(request.file_name)
+    pinecone_delete_success = delete_document_index_from_pinecone("multi-doc-rag", request.file_name)
 
-    if chroma_delete_success:
-        db_delete_success = delete_document_record(request.file_id)
+    if pinecone_delete_success:
+        db_delete_success = delete_document_record(request.file_name)
         if db_delete_success:
-            return {"message": f"Successfully deleted document with file_id {request.file_id} from the system."}
+            return {"message": f"Successfully deleted document with file_name {request.file_name} from the system."}
         else:
-            return {"error": f"Deleted from Chroma but failed to delete document with file_id {request.file_id} from the database."}
+            return {"error": f"Deleted from Chroma but failed to delete document with file_name {request.file_name} from the database."}
     else:
-        return {"error": f"Failed to delete document with file_id {request.file_id} from Chroma."}
-
+        return {"error": f"Failed to delete document with file_name {request.file_name} from Pinecone."}
 
 
 # Uvicorn entrypoint for `python main.py` (optional)
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api:app", 
-                host="0.0.0.0", 
-                port=int(os.getenv("PORT", "8000")), 
-                reload=True)
+    uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)

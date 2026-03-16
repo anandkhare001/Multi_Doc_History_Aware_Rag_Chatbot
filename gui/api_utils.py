@@ -47,9 +47,9 @@ def list_documents():
         return []
     
 
-def delete_document(file_id):
+def delete_document(file_name):
     headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
-    data = {"file_id": file_id}
+    data = {"file_name": file_name}
 
     try: 
         response = requests.post("http://localhost:8000/delete-doc", headers=headers, json=data)

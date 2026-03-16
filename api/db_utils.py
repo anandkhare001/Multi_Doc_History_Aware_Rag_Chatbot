@@ -62,9 +62,9 @@ def insert_document_record(filename):
     conn.close()
     return file_id
 
-def delete_document_record(file_id):
+def delete_document_record(file_name):
     conn = get_db_connection()
-    conn.execute('DELETE FROM document_store WHERE id = ?', (file_id,))
+    conn.execute('DELETE FROM document_store WHERE filename = ?', (file_name,))
     conn.commit()
     conn.close()
     return True
@@ -73,6 +73,14 @@ def get_all_documents():
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('SELECT id, filename, upload_timestamp FROM document_store ORDER BY upload_timestamp DESC')
+    documents = cursor.fetchall()
+    conn.close()
+    return [dict(doc) for doc in documents]
+
+def get_document_details(file_id):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(f"SELECT id, filename, upload_timestamp FROM document_store WHERE id = {file_id} ORDER BY upload_timestamp DESC")
     documents = cursor.fetchall()
     conn.close()
     return [dict(doc) for doc in documents]

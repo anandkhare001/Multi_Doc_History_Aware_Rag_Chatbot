@@ -1,8 +1,8 @@
 import streamlit as st
-from ui_interface.sidebar import display_sidebar
-from ui_interface.chat_interface import display_chat_interface
+from sidebar import display_sidebar
+from chat_interface import display_chat_interface
 
-st.title("langchain RAG Chatbot")
+st.title("Multi-Doc RAG Chatbot")
 
 # Initialize session state variables
 if "messages" not in st.session_state:

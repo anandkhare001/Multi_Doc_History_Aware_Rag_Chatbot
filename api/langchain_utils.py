@@ -6,7 +6,7 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from typing import List
 from langchain_core.documents import Document
 import os
-from db_utils.chroma_utils import vectorstore
+from chroma_utils import vectorstore
 from dotenv import load_dotenv
 
 load_dotenv()
