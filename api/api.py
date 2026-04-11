@@ -21,10 +21,22 @@ app = FastAPI(
 )
 
 @app.get("/")
+# Root endpoint to verify the API service is running
+# Returns a welcome message
+# Usage: GET /
 def read_root():
     return {"message": "Welcome to Multi Doc RAG API!"}
 
 # Chat Endpoint
+# Handles chat queries for document-based question answering
+# Params:
+# - query_input: QueryInput Pydantic model containing question, session_id and model selection
+# Workflow:
+# 1. Use existing or generate new session ID
+# 2. Retrieve chat history for session
+# 3. Invoke retrieval-augmented generation (RAG) model chain with query and chat history
+# 4. Log user query and AI response
+# 5. Return AI's answer and session information in QueryResponse model
 @app.post("/chat", response_model=QueryResponse)
 def chat(query_input: QueryInput):
     session_id = query_input.session_id or str(uuid.uuid4())
@@ -42,7 +54,18 @@ def chat(query_input: QueryInput):
     return QueryResponse(answer=answer, session_id=session_id, model=query_input.model)
 
 
+
 # Document Upload Endpoint
+# Handles uploading and indexing of documents
+# Params:
+# - file: Uploaded file from client
+# Workflow:
+# 1. Validate file extension for allowed types (pdf, docs, html)
+# 2. Temporarily save the uploaded file locally
+# 3. Insert document record in database and get file_id
+# 4. Load, split, and index the document content to Pinecone vector DB
+# 5. Remove temporary local file regardless of success or failure
+# Returns success message and file_id or raises HTTPException on failure
 @app.post("/upload-doc")
 def upload_and_index_document(file: UploadFile = File(...)):
     allowed_extensions = ['.pdf', '.docs', '.html']
@@ -73,29 +96,22 @@ def upload_and_index_document(file: UploadFile = File(...)):
             os.remove(temp_file_path)
 
 
+
 # List Documents Endpoint:
+# Returns a list of metadata for all documents in the system
+# Returns list of DocumentInfo Pydantic models
+# Usage: GET /list-docs
 @app.get("/list-docs", response_model = list[DocumentInfo])
 def list_documents():
     return get_all_documents()
 
 
-# Delete Document Endpoint:
-@app.post("/delete-doc")
-def delete_document(request: DeleteFileRequest):
-    #file_list = get_document_details(request.file_name)
-    pinecone_delete_success = delete_document_index_from_pinecone("multi-doc-rag", request.file_name)
 
-    if pinecone_delete_success:
-        db_delete_success = delete_document_record(request.file_name)
-        if db_delete_success:
-            return {"message": f"Successfully deleted document with file_name {request.file_name} from the system."}
-        else:
-            return {"error": f"Deleted from Chroma but failed to delete document with file_name {request.file_name} from the database."}
-    else:
-        return {"error": f"Failed to delete document with file_name {request.file_name} from Pinecone."}
+
 
 
 # Uvicorn entrypoint for `python main.py` (optional)
+# This allows running the FastAPI app directly via `python api.py`
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)

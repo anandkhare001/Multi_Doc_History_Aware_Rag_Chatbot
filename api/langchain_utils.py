@@ -9,14 +9,20 @@ import os
 from chroma_utils import vectorstore
 from dotenv import load_dotenv
 
+# Load environment variables from .env file, especially for the OpenAI API key
 load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
+# Initialize the document retriever with search parameters (return top 2 results)
 retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+
+# Output parser to convert output to string
 output_parser = StrOutputParser()
 
 
 # Setting Up Prompts
+# --------------------------------------------------
+# Prompt to reformulate user question into a standalone question
 contextualize_q_system_prompt = (
     "Given a chat history and the latest user question "
     "which might reference context in the chat history, "
@@ -31,6 +37,7 @@ contextualize_q_prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}"),
 ])
 
+# Prompt template for question answering using retrieved context
 qa_prompt = ChatPromptTemplate.from_messages([
     ("system", "You are a helpful AI assistant. Use the following context to answer the user's question."),
     ("system", "Context: {context}"),
@@ -39,8 +46,23 @@ qa_prompt = ChatPromptTemplate.from_messages([
 ])
 
 
-# Creating the RAG Chain
+# Creating the Retrieval-Augmented Generation Chain
+# --------------------------------------------------
 def get_rag_chain(model="gpt-3.5-turbo"):
+    """
+    Create and return a Retrieval-Augmented Generation (RAG) chain.
+
+    This chain integrates a history-aware retriever that reformulates user questions
+    to standalone questions based on chat history, and a question-answering chain
+    that uses retrieved documents as context to answer the user query.
+
+    Args:
+        model (str): The identifier for the language model to use. Default is "gpt-3.5-turbo".
+
+    Returns:
+        A retrieval chain object that can be called to process user queries with
+        context-aware retrieval and answer generation.
+    """
     llm = ChatOpenAI(model=model)
     history_aware_retriever = create_history_aware_retriever(llm, retriever, contextualize_q_prompt)
     question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)

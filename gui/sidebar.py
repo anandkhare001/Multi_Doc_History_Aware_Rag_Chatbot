@@ -3,11 +3,19 @@ from api_utils import upload_document, list_documents, delete_document
 
 
 def display_sidebar():
+    """
+    Display the sidebar UI for model selection, document upload,
+    document listing, and document deletion functionalities.
+    """
     # Model selection
+    # Allow users to select the desired GPT model from a list of options.
     model_options = ["gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini"]
     st.sidebar.selectbox("select Model", options=model_options, key="model")
 
     # Document upload
+    # Provide a file uploader widget for users to upload documents in PDF, DOCX, or HTML format.
+    # When a file is uploaded and the Upload button is clicked, upload the document using the API,
+    # then update the document list in the session state.
     uploaded_file = st.sidebar.file_uploader("Choose a file", type=["pdf", "docx", "html"])
     if uploaded_file and st.sidebar.button("Upload"):
         with st.spinner("Uploading..."):
@@ -18,11 +26,15 @@ def display_sidebar():
 
 
     # List and delete documents
+    # Display a header and a button to refresh the list of uploaded documents.
     st.sidebar.header("Uploaded Documents")
     if st.sidebar.button("Refresh Document List"):
         st.session_state.documents = list_documents()
 
     # Display document list and delete functionality
+    # Show all uploaded documents with their filenames and IDs.
+    # Provide a select box to choose a document to delete, along with a button to delete the selected document.
+    # On successful deletion, update the document list in the session state.
     if "documents" in st.session_state and st.session_state.documents:
         for doc in st.session_state.documents:
             st.sidebar.text(f"{doc['filename']} (ID: {doc['id']})")

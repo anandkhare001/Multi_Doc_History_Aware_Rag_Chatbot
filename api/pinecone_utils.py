@@ -1,3 +1,20 @@
+"""
+Module: pinecone_utils
+
+This module provides utility functions to load, split, index, and delete documents and their embeddings using Pinecone vector database.
+
+Functionalities:
+- Load documents from PDF and DOCX files
+- Split documents into manageable chunks for embedding
+- Index document chunks to Pinecone
+- Delete indexed documents by filename from Pinecone
+
+Requirements:
+- Pinecone API key and OpenAI API key should be set in environment variables
+- Supported document formats: PDF, DOCX
+
+"""
+
 from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
 from typing import List
 from langchain_core.documents import Document
@@ -5,6 +22,9 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 import os
 import uuid
 from pathlib import Path
+
+from dotenv import load_dotenv
+load_dotenv()
 
 from dotenv import load_dotenv
 load_dotenv()
