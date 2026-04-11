@@ -1,0 +1,79 @@
+version: "3.9"
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Multi-Doc RAG — Docker Compose
+#
+# Services
+# ────────
+#   api   FastAPI + Uvicorn  →  http://localhost:8000
+#   app   Streamlit UI       →  http://localhost:8501
+#
+# Shared resources
+# ────────────────
+#   rag-data  Named volume that holds the SQLite database (rag_app.db) and
+#             Chroma vector store so both containers read/write the same data.
+#
+# Environment
+# ───────────
+#   Copy .env.example → .env and fill in your keys before running.
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI Backend ────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: rag_api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # Persist SQLite DB and Chroma store between restarts
+      - rag-data:/app/data
+    environment:
+      # Tell db_utils where to write the SQLite file inside the container
+      DB_PATH: /app/data/rag_app.db
+      # Chroma persistence directory
+      CHROMA_PERSIST_DIR: /app/data/chroma_db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - rag-network
+
+  # ── Streamlit Frontend ─────────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+    container_name: rag_app
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      # Point the Streamlit app at the API service (uses Docker internal DNS)
+      API_BASE_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - rag-network
+
+# ── Named Volumes ──────────────────────────────────────────────────────────
+volumes:
+  rag-data:
+    driver: local
+
+# ── Networks ────────────────────────────────────────────────────────────────
+networks:
+  rag-network:
+    driver: bridge
