@@ -4,7 +4,8 @@ from langchain_utils import get_rag_chain
 from db_utils import (insert_application_logs, get_chat_history, get_all_documents,
                       insert_document_record, delete_document_record, get_document_details,
                       get_all_sessions, get_session_messages)
-from pinecone_utils import *
+#from pinecone_utils import *
+from chroma_utils import *
 import os
 import uuid
 import logging
@@ -62,7 +63,7 @@ def upload_and_index_document(file: UploadFile = File(...)):
         file_id = insert_document_record(file.filename)
         documents = load_documents(temp_file_path)
         documents_splits = split_documents(documents)
-        success = index_documents_to_pinecone("multi-doc-rag", documents_splits, file.filename)
+        success = index_documents_to_chroma("multi-doc-rag", documents_splits, file.filename)
 
         if success:
             return {"message": f"File {file.filename} has been successfully uploaded and indexed.", "file_id": file_id}
@@ -84,7 +85,7 @@ def list_documents():
 @app.post("/delete-doc")
 def delete_document(request: DeleteFileRequest):
     delete_document_record(request.file_name)
-    delete_document_index_from_pinecone("multi-doc-rag", request.file_name)
+    delete_document_index_from_chroma("multi-doc-rag", request.file_name)
     return {"message": f"Document '{request.file_name}' deleted successfully."}
 
 
@@ -122,3 +123,4 @@ def get_session_history(session_id: str):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("api:app", host="0.0.0.0", port=int(os.getenv("PORT", "8000")), reload=True)
+   

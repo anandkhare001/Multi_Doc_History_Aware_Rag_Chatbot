@@ -6,7 +6,7 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from typing import List
 from langchain_core.documents import Document
 import os
-from chroma_utils import vectorstore
+from chroma_utils import vectordb
 from dotenv import load_dotenv
 
 # Load environment variables from .env file, especially for the OpenAI API key
@@ -14,7 +14,7 @@ load_dotenv()
 os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 # Initialize the document retriever with search parameters (return top 2 results)
-retriever = vectorstore.as_retriever(search_kwargs={"k": 2})
+retriever = vectordb.as_retriever(search_kwargs={"k": 2})
 
 # Output parser to convert output to string
 output_parser = StrOutputParser()

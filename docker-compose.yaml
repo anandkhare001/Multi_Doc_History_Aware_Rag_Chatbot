@@ -1,3 +1,5 @@
+name: multi_doc_history_aware_rag_chatbot_2
+
 version: "3.9"
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -25,7 +27,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    container_name: rag_api
+    container_name: rag_api_2
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -53,7 +55,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.app
-    container_name: rag_app
+    container_name: rag_app_2
     restart: unless-stopped
     ports:
       - "8501:8501"
@@ -61,7 +63,7 @@ services:
       - .env
     environment:
       # Point the Streamlit app at the API service (uses Docker internal DNS)
-      API_BASE_URL: http://api:8000
+      API_BASE_URL: http://localhost:8000
     depends_on:
       api:
         condition: service_healthy

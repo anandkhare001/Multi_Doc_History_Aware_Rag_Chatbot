@@ -1,106 +1,132 @@
-from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader, UnstructuredHTMLLoader
+"""
+Module: chroma_utils
+
+This module provides utility functions to load, split, index, and delete documents
+using ChromaDB vector database.
+
+Functionalities:
+- Load documents from PDF and DOCX files
+- Split documents into manageable chunks for embedding
+- Index document chunks to ChromaDB
+- Delete indexed documents by filename from ChromaDB
+
+Requirements:
+- OpenAI API key should be set in environment variables
+- Supported document formats: PDF, DOCX
+"""
+
+from langchain_community.document_loaders import PyPDFLoader, Docx2txtLoader
+from typing import List
+from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_chroma import Chroma
-from typing import List
-from langchain_core.documents import Document
+
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
-# Load environment variables from a .env file
 load_dotenv()
-# Set the OpenAI API key environment variable
-os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
-# Configure text splitter to split documents into chunks for better processing
-text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=1000,  # maximum size of each chunk
-    chunk_overlap=200,  # overlap between chunks to maintain context
-    length_function=len  # function to measure length of text
-)
+embeddings = OpenAIEmbeddings(api_key=os.environ['OPENAI_API_KEY'])
 
-# Initialize embedding function using OpenAI's embeddings
-embedding_function = OpenAIEmbeddings()
+persist_directory = os.path.join(os.getcwd(), "chroma_db")
 
+# Initialize Chroma
+vectordb = Chroma(
+            collection_name="multi-doc-rag",
+            embedding_function=embeddings,
+            persist_directory=persist_directory
+        )
 
-# Initialize Chroma vector store to persist embeddings
-vectorstore = Chroma(persist_directory="./chroma_db", embedding_function=embedding_function)
-
-
-# Document Loading and Splitting
-
-def load_and_split_document(file_path: str) -> List[Document]:
-    """
-    Load a document from a file path and split into smaller chunks.
-
-    Args:
-        file_path (str): Path to the document file (.pdf, .docx, .html).
-
-    Returns:
-        List[Document]: List of split document chunks as Document objects.
-
-    Raises:
-        ValueError: If the file type is not supported.
-    """
-    if file_path.endswith('.pdf'):
-        loader = PyPDFLoader(file_path)
-    elif file_path.endswith('.docx'):
-        loader = Docx2txtLoader(file_path)
-    elif file_path.endswith('.html'):
-        loader = UnstructuredHTMLLoader(file_path)
-    else:
-        raise ValueError(f"Unsupported file type: {file_path}")
-
-    documents = loader.load()
+# -----------------------------
+# Split Documents
+# -----------------------------
+def split_documents(documents):
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,
+        chunk_overlap=200,
+        length_function=len
+    )
     return text_splitter.split_documents(documents)
 
 
-# Indexing Documents
+# -----------------------------
+# Load Documents
+# -----------------------------
+def load_documents(filepath: str) -> List[Document]:
+    path = Path(filepath)
+    filename = path.name
 
-def index_document_to_chroma(file_path: str, file_id: int) -> bool:
-    """
-    Index a document to the Chroma vector store.
+    if filepath.endswith('.pdf'):
+        loader = PyPDFLoader(filepath)
+    elif filepath.endswith('.docx'):
+        loader = Docx2txtLoader(filepath)
+    else:
+        raise ValueError(f"Unsupported file type: {filepath}")
 
-    Args:
-        file_path (str): Path to the document file.
-        file_id (int): Unique identifier to associate with the indexed document chunks.
+    documents = loader.load()
 
-    Returns:
-        bool: True if indexing succeeded, False otherwise.
-    """
+    for doc in documents:
+        doc.metadata['file_name'] = filename
+
+    return documents
+
+
+# -----------------------------
+# Index to ChromaDB
+# -----------------------------
+def index_documents_to_chroma(collection_name, documents_splits, file_name):
     try:
-        splits = load_and_split_document(file_path)
+        # Add metadata properly
+        for i, chunk in enumerate(documents_splits):
+            chunk.metadata.update({
+                "file_name": file_name,
+                "chunk": i + 1
+            })
 
-        # Add metadata to each split chunk for identification
-        for split in splits:
-            split.metadata['file_id'] = file_id
-            
-        # Add documents to the vector store
-        vectorstore.add_documents(splits)
+        vectordb.add_documents(documents_splits)
+        print(f"{file_name} indexed successfully!")
         return True
+
     except Exception as e:
-        print(f"Error indexing document: {e}")
+        print(f"Error indexing document {file_name}: {e}")
         return False
-    
 
-# Deleting Documents
 
-def delete_docs_from_chroma(file_id: int):
-    """
-    Delete documents from the Chroma vector store by their file_id.
-
-    Args:
-        file_id (int): Unique identifier associated with the documents to delete.
-
-    Returns:
-        bool: True if deletion was successful, False otherwise.
-    """
+# -----------------------------
+# Delete from ChromaDB
+# -----------------------------
+def delete_document_index_from_chroma(collection_name, file_name=None):
     try:
-        # This line attempts to get documents by metadata filter, adjust as needed to perform deletion
-        docs = vectorstore.get(where={"file_id": file_id})
-        print(f"Deleted all documents with file_id {file_id}")
+        if file_name:
+            vectordb._collection.delete(
+                where={"file_name": file_name}
+            )
+            print(f"Deleted documents with file_name: {file_name}")
+        else:
+            print("No file_name provided. Nothing deleted.")
 
         return True
+
     except Exception as e:
-        print(f"Error deleting document with file_id {file_id} from Chroma: {str(e)}")
+        print(f"Error deleting document {file_name}: {e}")
         return False
+
+
+# -----------------------------
+# Main Execution
+# -----------------------------
+if __name__ == "__main__":
+    #folder_path = os.path.join(os.getcwd(), "content", "docs")
+
+    #for filename in os.listdir(folder_path):
+    #    file_path = os.path.join(folder_path, filename)
+
+    #    documents = load_documents(file_path)
+    #    documents_splits = split_documents(documents)
+
+    #    index_documents_to_chroma("multi-doc-rag", documents_splits, filename)
+
+    # Example delete
+    delete_document_index_from_chroma("multi-doc-rag", "speech.pdf")

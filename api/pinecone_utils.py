@@ -26,9 +26,6 @@ from pathlib import Path
 from dotenv import load_dotenv
 load_dotenv()
 
-from dotenv import load_dotenv
-load_dotenv()
-
 def split_documents(documents):
      text_splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
