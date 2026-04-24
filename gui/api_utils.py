@@ -1,5 +1,6 @@
 import requests
 import streamlit as st
+import os
 
 BASE_URL = "http://localhost:8000"
 
@@ -7,11 +8,24 @@ BASE_URL = "http://localhost:8000"
 # ----------------------------------
 # Chat
 # ----------------------------------
+def get_api_response(question, session_id, model, embedding_model="openai"):
+    """
+    Send a question to the chat endpoint and return the JSON response.
 
-def get_api_response(question, session_id, model):
-    """Send a question to the chat endpoint and return the JSON response."""
+    Args:
+        question (str):        User's question.
+        session_id (str):      Current session ID (None for new session).
+        model (str):           Chat model — "gpt-3.5-turbo", "gpt-4o", "gpt-4o-mini",
+                               or "gemma:2b-instruct-q4" (local via Ollama).
+        embedding_model (str): "openai" or "nomic-embed-text" (local via Ollama).
+                               Must match the model used when the document was uploaded.
+    """
     headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
-    data = {"question": question, "model": model}
+    data = {
+        "question": question,
+        "model": model,
+        "embedding_model": embedding_model
+    }
     if session_id:
         data["session_id"] = session_id
 
@@ -30,12 +44,20 @@ def get_api_response(question, session_id, model):
 # ----------------------------------
 # Documents
 # ----------------------------------
+def upload_document(file, embedding_model="openai"):
+    """
+    Upload a file to the backend and index it with the chosen embedding model.
 
-def upload_document(file):
-    """Upload a file to the backend and return the JSON response."""
+    Args:
+        file:                  Streamlit UploadedFile object.
+        embedding_model (str): "openai" or "nomic-embed-text".
+                               Determines which vectorstore the chunks go into.
+    """
     try:
         files = {"file": (file.name, file, file.type)}
-        response = requests.post(f"{BASE_URL}/upload-doc", files=files)
+        # embedding_model sent as form field alongside the file
+        data = {"embedding_model": embedding_model}
+        response = requests.post(f"{BASE_URL}/upload-doc", files=files, data=data)
         if response.status_code == 200:
             return response.json()
         else:
@@ -64,7 +86,6 @@ def delete_document(file_name):
     """Delete a document by filename via the backend API."""
     headers = {'accept': 'application/json', 'Content-Type': 'application/json'}
     data = {"file_name": file_name}
-
     try:
         response = requests.post(f"{BASE_URL}/delete-doc", headers=headers, json=data)
         if response.status_code == 200:
@@ -80,7 +101,6 @@ def delete_document(file_name):
 # ----------------------------------
 # Chat Sessions  (NEW)
 # ----------------------------------
-
 def list_sessions():
     """
     Fetch all past chat sessions from the backend.

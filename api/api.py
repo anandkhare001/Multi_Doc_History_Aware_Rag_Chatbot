@@ -1,11 +1,11 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form
 from pydantic_models import QueryInput, QueryResponse, DocumentInfo, DeleteFileRequest
 from langchain_utils import get_rag_chain
 from db_utils import (insert_application_logs, get_chat_history, get_all_documents,
                       insert_document_record, delete_document_record, get_document_details,
                       get_all_sessions, get_session_messages)
 #from pinecone_utils import *
-from chroma_utils import *
+from chroma_utils import index_document_to_chroma, delete_document_index_from_chroma, load_documents, split_documents
 import os
 import uuid
 import logging
@@ -30,46 +30,84 @@ def read_root():
 # Chat Endpoint
 @app.post("/chat", response_model=QueryResponse)
 def chat(query_input: QueryInput):
+    """
+    Handle a chat query.
+
+    Routing:
+      - model = "gemma:2b-instruct"  → Ollama (local)
+      - model = "gpt-*"                 → OpenAI (API)
+
+      - embedding_model = "nomic-embed-text" → Ollama nomic-embed-text (local)
+      - embedding_model = "openai"           → OpenAI text-embedding-ada-002
+    """
     session_id = query_input.session_id or str(uuid.uuid4())
-    logging.info(f"Session ID: {session_id}, User Query: {query_input.question}, Model: {query_input.model.value}")
+    logging.info(
+        f"Session: {session_id} | Model: {query_input.model.value} "
+        f"| Embedding: {query_input.embedding_model.value} "
+        f"| Query: {query_input.question}"
+    )
 
     chat_history = get_chat_history(session_id)
-    rag_chain = get_rag_chain(query_input.model.value)
+    rag_chain = get_rag_chain(
+        model=query_input.model.value,
+        embedding_model=query_input.embedding_model.value
+    )
     answer = rag_chain.invoke({
         "input": query_input.question,
         "chat_history": chat_history
     })['answer']
 
     insert_application_logs(session_id, query_input.question, answer, query_input.model.value)
-    logging.info(f"Session ID: {session_id}, AI Response: {answer}")
+    logging.info(f"Session: {session_id} | Response: {answer}")
     return QueryResponse(answer=answer, session_id=session_id, model=query_input.model)
 
 
 # Document Upload Endpoint
 @app.post("/upload-doc")
-def upload_and_index_document(file: UploadFile = File(...)):
-    allowed_extensions = ['.pdf', '.docs', '.html']
+def upload_and_index_document(
+    file: UploadFile = File(...),
+    embedding_model: str = Form(default="openai")   # "openai" or "nomic-embed-text"
+):
+    """
+    Upload a document and index it using the chosen embedding model.
+
+    The embedding_model used here MUST match the one used at query time
+    so the retriever searches the correct vectorstore.
+    """
+    allowed_extensions = ['.pdf', '.docx', '.html']
     file_extension = os.path.splitext(file.filename)[1].lower()
 
     if file_extension not in allowed_extensions:
-        raise HTTPException(status_code=400, detail=f"Unsupported file type. Allowed types are: {', '.join(allowed_extensions)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"
+        )
+
+    # Validate embedding_model value
+    valid_embeddings = {"openai", "nomic-embed-text"}
+    if embedding_model not in valid_embeddings:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid embedding_model. Choose from: {valid_embeddings}"
+        )
 
     temp_file_path = f"temp_{file.filename}"
-
     try:
         with open(temp_file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
         file_id = insert_document_record(file.filename)
-        documents = load_documents(temp_file_path)
-        documents_splits = split_documents(documents)
-        success = index_documents_to_chroma("multi-doc-rag", documents_splits, file.filename)
+        success = index_document_to_chroma(temp_file_path, file_id, embedding_model)
 
         if success:
-            return {"message": f"File {file.filename} has been successfully uploaded and indexed.", "file_id": file_id}
+            return {
+                "message": f"File '{file.filename}' uploaded and indexed successfully.",
+                "file_id": file_id,
+                "embedding_model": embedding_model
+            }
         else:
             delete_document_record(file_id)
-            raise HTTPException(status_code=500, detail=f"Failed to index {file.filename}.")
+            raise HTTPException(status_code=500, detail=f"Failed to index '{file.filename}'.")
     finally:
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
@@ -84,8 +122,11 @@ def list_documents():
 # Delete Document Endpoint
 @app.post("/delete-doc")
 def delete_document(request: DeleteFileRequest):
+    """Delete a document record and remove its vectors from both vectorstores."""
     delete_document_record(request.file_name)
-    delete_document_index_from_chroma("multi-doc-rag", request.file_name)
+    # Remove from both stores in case it was re-indexed with a different model
+    delete_document_index_from_chroma(request.file_name, "openai")
+    delete_document_index_from_chroma(request.file_name, "nomic-embed-text")
     return {"message": f"Document '{request.file_name}' deleted successfully."}
 
 

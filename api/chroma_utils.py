@@ -20,6 +20,7 @@ from typing import List
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
+from langchain_community.embeddings import OllamaEmbeddings
 from langchain_chroma import Chroma
 
 import os
@@ -28,16 +29,63 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-embeddings = OpenAIEmbeddings(api_key=os.environ['OPENAI_API_KEY'])
+# Ollama base URL — overridden by Docker env var when running in containers
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
-persist_directory = os.path.join(os.getcwd(), "chroma_db")
+# Chroma persistence directory — overridden by Docker env var
+CHROMA_PERSIST_DIR = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
 
-# Initialize Chroma
-vectordb = Chroma(
-            collection_name="multi-doc-rag",
-            embedding_function=embeddings,
-            persist_directory=persist_directory
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,
+    chunk_overlap=200,
+    length_function=len
+)
+
+# ── Embedding Factory ──────────────────────────────────────────────────────────
+
+def get_embedding_function(embedding_model: str = "openai"):
+    """
+    Return the appropriate embedding function based on the selected model.
+
+    Args:
+        embedding_model (str): "openai"           → OpenAI text-embedding-ada-002
+                               "nomic-embed-text" → Ollama local embedding
+
+    Returns:
+        An embeddings object compatible with LangChain vectorstores.
+    """
+    if embedding_model == "nomic-embed-text":
+        return OllamaEmbeddings(
+            model="nomic-embed-text",
+            base_url=OLLAMA_BASE_URL
         )
+    # Default: OpenAI
+    return OpenAIEmbeddings()
+
+def get_vectorstore(embedding_model: str = "openai") -> Chroma:
+    """
+    Return a Chroma vectorstore initialised with the chosen embedding function.
+    Each embedding model gets its own subdirectory so embeddings don't mix.
+
+    Args:
+        embedding_model (str): "openai" or "nomic-embed-text"
+
+    Returns:
+        Chroma vectorstore instance.
+    """
+    # Separate persist dirs prevent dimension mismatch errors when switching models
+    subdir = "openai" if embedding_model == "openai" else "nomic"
+    persist_dir = os.path.join(CHROMA_PERSIST_DIR, subdir)
+
+    return Chroma(
+        persist_directory=persist_dir,
+        embedding_function=get_embedding_function(embedding_model)
+    )
+
+
+# Default vectorstore (OpenAI) — used by langchain_utils for backwards compatibility
+vectorstore = get_vectorstore("openai")
+
 
 # -----------------------------
 # Split Documents
@@ -73,46 +121,56 @@ def load_documents(filepath: str) -> List[Document]:
     return documents
 
 
-# -----------------------------
-# Index to ChromaDB
-# -----------------------------
-def index_documents_to_chroma(collection_name, documents_splits, file_name):
+# ── Indexing ───────────────────────────────────────────────────────────────────
+
+def index_document_to_chroma(file_path: str, file_id: int,
+                              embedding_model: str = "openai") -> bool:
+    """
+    Index a document into the Chroma vectorstore using the chosen embedding model.
+
+    Args:
+        file_path (str):       Path to the document.
+        file_id (int):         Unique file identifier stored as metadata.
+        embedding_model (str): "openai" or "nomic-embed-text"
+
+    Returns:
+        bool: True on success, False on failure.
+    """
     try:
-        # Add metadata properly
-        for i, chunk in enumerate(documents_splits):
-            chunk.metadata.update({
-                "file_name": file_name,
-                "chunk": i + 1
-            })
+        document = load_documents(file_path)
+        splits = split_documents(document)
+        for split in splits:
+            split.metadata['file_id'] = file_id
 
-        vectordb.add_documents(documents_splits)
-        print(f"{file_name} indexed successfully!")
+        vs = get_vectorstore(embedding_model)
+        vs.add_documents(splits)
         return True
-
     except Exception as e:
-        print(f"Error indexing document {file_name}: {e}")
+        print(f"Error indexing document: {e}")
         return False
 
 
-# -----------------------------
-# Delete from ChromaDB
-# -----------------------------
-def delete_document_index_from_chroma(collection_name, file_name=None):
+# ── Deletion ───────────────────────────────────────────────────────────────────
+
+def delete_document_index_from_chroma(file_id: int, embedding_model: str = "openai") -> bool:
+    """
+    Delete all chunks for a given file_id from the appropriate vectorstore.
+
+    Args:
+        file_id (int):         The file identifier to delete.
+        embedding_model (str): "openai" or "nomic-embed-text"
+
+    Returns:
+        bool: True on success, False on failure.
+    """
     try:
-        if file_name:
-            vectordb._collection.delete(
-                where={"file_name": file_name}
-            )
-            print(f"Deleted documents with file_name: {file_name}")
-        else:
-            print("No file_name provided. Nothing deleted.")
-
+        vs = get_vectorstore(embedding_model)
+        vs.delete(where={"file_id": file_id})
+        print(f"Deleted all documents with file_id {file_id} from {embedding_model} store")
         return True
-
     except Exception as e:
-        print(f"Error deleting document {file_name}: {e}")
+        print(f"Error deleting document with file_id {file_id}: {str(e)}")
         return False
-
 
 # -----------------------------
 # Main Execution

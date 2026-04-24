@@ -6,9 +6,25 @@ from datetime import datetime
 # ===================== ENUMS =====================
 # Enum representing supported model names
 class ModelName(str, Enum):
+    # ── API Models ──────────────────────────────
     GPT3_5 = "gpt-3.5-turbo"
     GPT4_O = "gpt-4o"
     GPT4_O_MINI = "gpt-4o-mini"
+    # ── Local Models (via Ollama) ────────────────
+    GEMMA_2B    = "gemma:2b-instruct"    # local chat model
+
+
+class EmbeddingModel(str, Enum):
+    # ── API Embedding ────────────────────────────
+    OPENAI      = "openai"                  # text-embedding-ada-002
+
+    # ── Local Embedding (via Ollama) ─────────────
+    NOMIC       = "nomic-embed-text"        # local embedding model
+
+
+# Helper sets used by langchain_utils and chroma_utils to route correctly
+OLLAMA_CHAT_MODELS      = {ModelName.GEMMA_2B}
+OLLAMA_EMBEDDING_MODELS = {EmbeddingModel.NOMIC}
 
 
 # ===================== Pydantic Model: Query Input =====================
@@ -16,9 +32,12 @@ class ModelName(str, Enum):
 # It includes the question to be asked, an optional session identifier for
 # tracking conversation context, and the AI model to be used for processing.
 class QueryInput(BaseModel):
-    question: str  # Question text to be asked
-    session_id: str = Field(default=None)  # Optional session identifier for tracking
-    model: ModelName = Field(default=ModelName.GPT3_5)  # Model to use for query processing
+    question:        str        = Field(...)
+    session_id:      str        = Field(default=None)
+    model:           ModelName  = Field(default=ModelName.GPT3_5)
+    # embedding_model is kept in session but not sent to /chat;
+    # it is sent separately to /upload-doc
+    embedding_model: EmbeddingModel = Field(default=EmbeddingModel.OPENAI)
 
 
 # ===================== Pydantic Model: Query Response =====================
